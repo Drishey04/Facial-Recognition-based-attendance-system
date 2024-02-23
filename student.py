@@ -559,15 +559,12 @@ class Student:
                         student_id = self.get_last_student_id() + 1
                 
                 
-
                 # Create a new directory for each user inside /data
                 user_folder = f"student/data/user_{student_id}"
                 if not os.path.exists(user_folder):
                     os.makedirs(user_folder)
                 
                 cap = cv2.VideoCapture(0)
-                
-                
 
                 # Create a window to display camera feed
                 cv2.namedWindow("Camera Feed", cv2.WINDOW_NORMAL)
@@ -613,9 +610,6 @@ class Student:
                     faces = detector(current_frame, 0)
 
 
-                    # Detect faces in the cropped frame
-                    # faces = face_classifier.detectMultiScale(gray_frame, 1.3, 15)
-
                     # Change frame color based on face detection
                     frame_color = (0, 0, 255)  # Default: Red (No Face)
                     # if len(faces) > 0:
@@ -624,19 +618,7 @@ class Student:
                     # If a face is detected, capture 10 images
                     if len(faces) > 0:
                         frame_color = (0, 255, 0) # Green (Face Detected)
-                        
-                        # for(x,y,w,h) in faces:
-                        #     face_cropped=frame_cropped[y:y+h,x:x+w]
-                        #     face_cropped_gray=cv2.cvtColor(face_cropped,cv2.COLOR_BGR2GRAY)
-                        
-                        # for i in range(1,3):
-                        #     text = f"Capturing in {i} sec" 
-                        #     cv2.putText(frame_cropped, str(img_id), (50, 50), cv2.FONT_HERSHEY_COMPLEX, 2,
-                        #                 (0, 255, 0), 2)
-                        #     time.sleep(1)  # Sleep for 1 second
 
-                        
-                        # if img_id <= 50:
                         if img_id < 5:
                             if capture_image:
                                 img_id += 1
@@ -676,9 +658,6 @@ class Student:
                 else:
                     if not new_student:
                         self.add_data()
-                    
-                
-                
 
             except Exception as es:
                 messagebox.showerror("Error", f"Due To: {str(es)}", parent=self.root)
@@ -700,9 +679,6 @@ class Student:
                 # Create the directory if it doesn't exist
                 if not os.path.exists(user_directory):
                     os.makedirs(user_directory)
-                    feature_file = user_directory + "/features.csv"
-                    with open(feature_file, 'w', newline=''):
-                        print(f"CSV file created successfully.")
 
                 return user_directory
             
@@ -713,16 +689,18 @@ class Student:
     def return_128d_features(self, path_img):
         # img=Image.open(image)
         # imageNp=np.array(img,'uint8')
-        print(path_img)
+        # print(path_img)
         img_rd = cv2.imread(path_img)
-        faces = detector(img_rd, 1)
+        gray = cv2.cvtColor(img_rd, cv2.COLOR_BGR2GRAY)
+
+        faces = detector(gray, 1)
 
         logging.info("%-40s %-20s", " Image with faces detected:", path_img)
 
         # For photos of faces saved, we need to make sure that we can detect faces from the cropped images
         if len(faces) != 0:
             shape = predictor(img_rd, faces[0])
-            face_descriptor = face_reco_model.compute_face_descriptor(img_rd, shape)
+            face_descriptor = np.array(face_reco_model.compute_face_descriptor(img_rd, shape))
         else:
             face_descriptor = 0
             logging.warning("no face")
@@ -730,7 +708,7 @@ class Student:
 
     def train_classifier(self):
 
-        Training=messagebox.askyesno("Train","Do you want to train selected data?",parent=self.root)
+        Training=messagebox.askyesno("Training","Do you want to train selected data?",parent=self.root)
         if Training>0:
             paths = []
             faces=[]
@@ -770,46 +748,11 @@ class Student:
                         features_mean_personX = np.insert(features_mean_personX, 0, i, axis=0) 
                         writer.writerow(features_mean_personX)     
                         
-                        # # Append the new row as a DataFrame
-                        # new_df = pd.DataFrame([features_mean_personX], columns=df.columns)
-
-                        # # Concatenate the original DataFrame with the new row
-                        # df = pd.concat([df, new_df], ignore_index=True)
-
-                # Write the updated DataFrame back to the CSV file
-                # df.to_csv(filename, index=False)
                 cv2.destroyAllWindows()
                 messagebox.showinfo("Result","Training datasets completed!!!",parent=self.root)
                 self.student_ids = []
             else:
                 messagebox.showwarning("Warning","Selected students list is empty",parent=self.root)
-
-
-                            # if filename.endswith(".jpg"):
-                            #     # Build the full path to each image
-                            #     ids.append(i)
-                            #     image_path = os.path.join(user_folder, filename)
-                            #     paths.append(image_path)
-                
-            
-
-            # for image in paths:
-            #     img=Image.open(image)
-            #     # imageNp=np.array(img,'uint8')
-            #     # faces.append(imageNp)
-            #     cv2.imshow("Training",img)
-            #     cv2.waitKey(1)==27
-            
-            # ids=np.array(ids)
-            # user_directory=self.create_user_directory()
-
-
-            #****************train classifier**************
-            # clf=cv2.face.LBPHFaceRecognizer_create()
-            
-            # clf.train(faces,ids)
-            # clf.write(str(user_directory)+"/"+"classifier.xml")
-            
 
         else:
             if not Training:

@@ -6,6 +6,21 @@ import mysql.connector
 import cv2
 import os
 import numpy as np
+import csv
+import logging
+import dlib
+import pickle
+
+
+# Use frontal face detector of Dlib
+detector = dlib.get_frontal_face_detector()
+#  Get face landmarks
+predictor = dlib.shape_predictor('data_dlib/shape_predictor_68_face_landmarks.dat')
+
+#  Use Dlib resnet50 model to get 128D face descriptor
+face_reco_model = dlib.face_recognition_model_v1("data_dlib/dlib_face_recognition_resnet_model_v1.dat")
+
+
 
 
 class Faculty:
@@ -31,6 +46,40 @@ class Faculty:
         self.search_var_caputured=StringVar()
 
         self.faculty_ids = []
+
+        self.font = cv2.FONT_ITALIC
+
+        #  Save the features of faces in the database
+        self.face_features_known_list = []
+        # / Save the name of faces in the database
+        self.face_id_known_list = []
+
+        #  List to save centroid positions of ROI in frame N-1 and N
+        self.last_frame_face_centroid_list = []
+        self.current_frame_face_centroid_list = []
+
+        # List to save names of objects in frame N-1 and N
+        self.last_frame_face_id_list = []
+        self.current_frame_face_id_list = []
+
+        #  cnt for faces in frame N-1 and N
+        self.last_frame_face_cnt = 0
+        self.current_frame_face_cnt = 0
+
+        # Save the e-distance for faceX when recognizing
+        self.current_frame_face_X_e_distance_list = []
+
+        # Save the positions and names of current faces captured
+        self.current_frame_face_position_list = []
+        #  Save the features of people in current frame
+        self.current_frame_face_feature_list = []
+
+        # e distance between centroid of ROI in last and current frame
+        self.last_current_frame_centroid_e_distance = 0
+
+        #  Reclassify after 'reclassify_interval' frames
+        self.reclassify_interval_cnt = 0
+        self.reclassify_interval = 5
 
 
 
@@ -203,6 +252,9 @@ class Faculty:
 
         face_recog_btn=Button(operations_btn_frame,text="Facial Recognition",command=self.face_recog,width=15,cursor="hand2",font=("times new roman", 12, "bold"),bg="blue",fg="white")
         face_recog_btn.grid(row=0,column=2,padx=5,pady=0,sticky=W)
+        
+
+        
 
         # new_semester_btn=Button(operations_btn_frame,text="New Semester",width=15,cursor="hand2",font=("times new roman", 12, "bold"),bg="green",fg="white")
         # new_semester_btn.grid(row=0,column=3,padx=335,pady=0,sticky=W)
@@ -248,6 +300,7 @@ class Faculty:
         my_cursor=self.conn.cursor()
         my_cursor.execute("Select * from faculty")
         data=my_cursor.fetchall()
+        self.faculty_ids = [row[0] for row in data]
 
         if len(data)!=0:
             self.faculty_table.delete(*self.faculty_table.get_children())
@@ -255,7 +308,6 @@ class Faculty:
                 self.faculty_table.insert("",END,values=i)
             self.conn.commit()
                 
-
 
     def apply_filter(self):
         my_cursor=self.conn.cursor()
@@ -286,7 +338,6 @@ class Faculty:
                 self.faculty_table.insert("",END,values=i)
             self.conn.commit()
 
-    
 
     #***********get cursor************
     def get_cursor(self,event=""):
@@ -327,6 +378,20 @@ class Faculty:
             except Exception as es:
                 messagebox.showerror("Error", f"Due To:{str(es)}",parent=self.root)
 
+    #update captured face only
+    def update_face(self):
+        if self.var_department.get()=="Select"  or self.var_name.get()=="" or self.var_faculty_code.get()=="":
+            messagebox.showerror("Error", "All Fields are required",parent=self.root)
+        else:
+            try:
+                my_cursor=self.conn.cursor()    
+                my_cursor.execute("UPDATE faculty SET Captured_face=%s WHERE facultyId=%s",(self.var_captured_face.get(),self.var_facultyId.get(),))
+                messagebox.showinfo("Success","Student details successfully updated",parent=self.root)
+                self.conn.commit()
+                self.fetch_data()
+            
+            except Exception as es:
+                messagebox.showerror("Error", f"Due To:{str(es)}",parent=self.root)
 
     #delete function
     def delete_data(self):
@@ -351,7 +416,6 @@ class Faculty:
                 
             except Exception as es:
                 messagebox.showerror("Error", f"Due To:{str(es)}",parent=self.root)
-
 
     #reset function
     def reset_data(self):
@@ -378,10 +442,27 @@ class Faculty:
         except Exception as es:
             messagebox.showerror("Error", f"Due To: {str(es)}", parent=self.root)
 
-    
+    def get_details(self,id):
+        try:
+            my_cursor=self.conn.cursor()
+            # print(id)
+            query = "SELECT Name FROM faculty WHERE facultyId=%s"
+            my_cursor.execute(query,(str(id),))
+            result = my_cursor.fetchone()
+            self.conn.commit()
+
+            if result:
+                # print(result[0])
+                return result[0]  # Assuming facultyId is the first column in the result
+            else:
+                return None  # faculty not found
+        
+        except Exception as es:
+            messagebox.showerror("Error", f"Due To: {str(es)}", parent=self.root)
+
+
 
     #**********************generate data set or take photo samples************
-
     def generate_dataset(self):
         if self.var_department.get()=="Select"  or self.var_name.get()=="" or self.var_faculty_code.get()=="":
             messagebox.showerror("Error", "All Fields are required",parent=self.root)
@@ -397,15 +478,13 @@ class Faculty:
                 else:
                     if not new_faculty:
                         faculty_id = self.get_last_faculty_id() + 1
-                
-                self.var_captured_face.set("Yes")
 
+                
                 # Create a new directory for each user inside /data
                 user_folder = f"faculty/data/user_{faculty_id}"
                 if not os.path.exists(user_folder):
                     os.makedirs(user_folder)
                 
-                face_classifier=cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
                 cap = cv2.VideoCapture(0)
 
                 # Create a window to display camera feed
@@ -423,7 +502,18 @@ class Faculty:
                 rect_width = 300  # Increase the width
                 rect_height = 300
 
+                capture_image = False
                 img_id = 0
+
+                def mouse_callback(event, x, y, flags, param):
+                    nonlocal capture_image
+                    if event == cv2.EVENT_LBUTTONDOWN:  # Check if the left mouse button is pressed
+                        capture_image = True
+
+                cv2.setMouseCallback("Camera Feed", mouse_callback)  # Set the mouse callback
+
+                self.minimize_window() 
+
                 while True:
                     ret, my_frame = cap.read()
 
@@ -436,30 +526,29 @@ class Faculty:
                                     center_x - rect_width // 2:center_x + rect_width // 2]
 
                     # Convert to grayscale for face detection
-                    gray_frame = cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2GRAY)
-
-                    # Detect faces in the cropped frame
-                    faces = face_classifier.detectMultiScale(gray_frame, 1.3, 5)
+                    current_frame = cv2.cvtColor(frame_cropped, cv2.COLOR_BGR2RGB)
+                    faces = detector(current_frame, 0)
 
                     # Change frame color based on face detection
-                    frame_color = (0, 0, 255)  # Default: Red (No Face)
-                    if len(faces) > 0:
-                        frame_color = (0, 255, 0)  # Green (Face Detected)
+                    frame_color = (0, 0, 255)  # Default: Red (No Face)   
 
-                    # If a face is detected, capture 50 images
+                    # If a face is detected, capture 10 images
                     if len(faces) > 0:
-                        img_id += 1
-                        for(x,y,w,h) in faces:
-                            face_cropped=frame_cropped[y:y+h,x:x+w]
-                            face_cropped_gray=cv2.cvtColor(face_cropped,cv2.COLOR_BGR2GRAY)
-                        
-                        if img_id <= 100:
-                            face_path = f"{user_folder}/user_{faculty_id}_{img_id}.jpg"
-                            cv2.imwrite(face_path, face_cropped_gray)
-                             # Display the captured face
-                            cv2.putText(frame_cropped, str(img_id), (50, 50), cv2.FONT_HERSHEY_COMPLEX, 2,
-                                        (0, 255, 0), 2)
-                            # cv2.imshow("Cropped Face", frame_cropped)
+                        frame_color = (0, 255, 0) # Green (Face Detected)
+
+                        if img_id < 5:
+                            if capture_image:
+                                img_id += 1
+                                face_path = f"{user_folder}/user_{faculty_id}_{img_id}.jpg"
+                                cv2.imwrite(face_path, frame_cropped)
+                                capture_image=False
+                            else:
+                                if img_id==0:
+                                    cv2.putText(my_frame, "Tap to start.", (20, 25), cv2.FONT_HERSHEY_COMPLEX, 1,(0, 0, 255), 2)
+                                else:
+                                    display_text = f"Saved images: {img_id}."
+                                    cv2.putText(my_frame, display_text, (20, 25), cv2.FONT_HERSHEY_COMPLEX, 1,(0, 255, 0), 2)
+                                
                         else:
                             break
 
@@ -477,135 +566,285 @@ class Faculty:
 
                 cap.release()
                 cv2.destroyAllWindows()
-                messagebox.showinfo("Result", "Generating data sets completed.", parent=self.root)
+
+                self.maximize_window()
+
+                self.var_captured_face.set("Yes")
+                if new_faculty > 0:
+                    self.update_face()
+                else:
+                    if not new_faculty:
+                        self.add_data()
 
             except Exception as es:
                 messagebox.showerror("Error", f"Due To: {str(es)}", parent=self.root)
 
+    def minimize_window(self):
+        self.root.iconify()
 
+    def maximize_window(self):
+        self.root.deiconify()
     
     #**************************training dataset***********************************************
-    # def create_user_directory(self):
+    def face_encodings(self, img):
+        faces = detector(img, 1)
 
-    #     if self.search_var_department.get()=="Department" or self.search_var_caputured.get()=="No":
-    #         messagebox.showerror("Error", "Select students Deaprtment, and captured face appropriately.",parent=self.root)
-    #     else:
-    #         user_directory = f"faculty/{self.search_var_department.get()}"
+        logging.info("%-40s %-20s", " Image with faces detected:", img)
 
-    #         try:
-    #             # Create the directory if it doesn't exist
-    #             os.makedirs(user_directory)
-    #             return user_directory
-    #         except OSError as e:
-    #             print(f"Error creating directory: {e}")
-    #             return None
-            
+        # For photos of faces saved, we need to make sure that we can detect faces from the cropped images
+        if len(faces) != 0:
+            shape = predictor(img, faces[0])
+            face_descriptor = np.array(face_reco_model.compute_face_descriptor(img, shape))
+        else:
+            face_descriptor = 0
+            logging.warning("no face")
+        return face_descriptor
+    
+
 
     def train_classifier(self):
 
-        Training=messagebox.askyesno("Train","Do you want to train selected data?",parent=self.root)
+        Training=messagebox.askyesno("Training","Do you want to train selected data?",parent=self.root)
         if Training>0:
             paths = []
             faces=[]
             ids=[]
 
             if self.faculty_ids:
-                for i in self.faculty_ids:
-                    user_folder = f"faculty/data/user_{i}"
+                # user_directory = self.create_user_directory()
+                feature_file =  "faculty/features.csv"
+                id_encondings_dict = {}
+                # df = pd.read_csv(feature_file)
+                with open(feature_file,"w",newline="") as csvfile:
+                    writer = csv.writer(csvfile)
 
-                    # Check if the user folder exists
-                    if os.path.exists(user_folder):
-                        # Iterate over files in the user folder
-                        for filename in os.listdir(user_folder):
-                            if filename.endswith(".jpg"):
-                                # Build the full path to each image
-                                ids.append(i)
-                                image_path = os.path.join(user_folder, filename)
-                                paths.append(image_path)
-            
-            
+                
 
-            for image in paths:
-                img=Image.open(image).convert('L') #gray scale image
-                imageNp=np.array(img,'uint8')
-                faces.append(imageNp)
-                cv2.imshow("Training",imageNp)
-                cv2.waitKey(1)==27
-            
-            ids=np.array(ids)
+                    for id in self.faculty_ids:
+                        user_folder = f"faculty/data/user_{id}"
+                        features_list_personX = []
 
+                        # Check if the user folder exists
+                        if os.path.exists(user_folder):
+                            # Iterate over files in the user folder
+                            for filename in os.listdir(user_folder):
+                                img_rd = cv2.imread(user_folder+"/"+filename)
+                                encodings = self.face_encodings(img_rd)
+                                # if features_128d:
+                                
+                                
+                                features_list_personX.append(encodings)
+                                
+                                img=Image.open(user_folder+"/"+filename)
+                                imageNp=np.array(img,'uint8')
+                                cv2.imshow("Training",imageNp)
+                                cv2.waitKey(1)==27
+                                
+                        
+                        if features_list_personX:
+                            features_mean_personX = np.array(features_list_personX, dtype=object).mean(axis=0)
+                        else:
+                            features_mean_personX = np.zeros(128, dtype=object, order='C')       
+                        
+                        e = id_encondings_dict.get(id, [])
+                        e.extend(features_mean_personX)
+                        id_encondings_dict[id] = e
+                        # features_mean_personX = np.insert(features_mean_personX, 0, id, axis=0) 
 
-            #****************train classifier**************
-            clf=cv2.face.LBPHFaceRecognizer_create()
-            
-            clf.train(faces,ids)
-            clf.write("faculty/"+"faculty_classifier.xml")
-            cv2.destroyAllWindows()
-            messagebox.showinfo("Result","Training datasets completed!!!",parent=self.root)
+                        # writer.writerow(features_mean_personX)     
+                with open("faculty/encodings.pickle", "wb") as f:
+                    # print(id_encondings_dict)
+                    pickle.dump(id_encondings_dict, f)   
+
+                cv2.destroyAllWindows()
+                messagebox.showinfo("Result","Training datasets completed!!!",parent=self.root)
+                self.faculty_ids = []
+            else:
+                messagebox.showwarning("Warning","Selected students list is empty",parent=self.root)
 
         else:
             if not Training:
                 return
+            
+    
+    #***********************Recognition********************************************************
+            
+    def return_euclidean_distance(self,feature_1, feature_2):
+        feature_1 = np.array(feature_1)
+        feature_2 = np.array(feature_2)
+        dist = np.sqrt(np.sum(np.square(feature_1 - feature_2)))
+        return dist
+    
+    def get_face_database(self):
+        if os.path.exists("faculty/encodings.pickle"):
+            with open("faculty/encodings.pickle", "rb") as f:
+                id_encodings_dict = pickle.load(f)
+            for id in id_encodings_dict.keys():
+                self.face_id_known_list.append(id)
+                self.face_features_known_list.append(id_encodings_dict[id])
+            
+            return 1
+        else:
+            logging.warning("encodings.pickle.csv not found!")
+            return 0
 
-    def face_recog(self):
-        def draw_boundray(img,classifier,scaleFactor,minNeighbors,color,text,clf):
-            gray_image=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-            features=classifier.detectMultiScale(gray_image,scaleFactor,minNeighbors)
+    def centroid_tracker(self):
+        for i in range(len(self.current_frame_face_centroid_list)):
+            e_distance_current_frame_person_x_list = []
+            #  For object 1 in current_frame, compute e-distance with object 1/2/3/4/... in last frame
+            for j in range(len(self.last_frame_face_centroid_list)):
+                self.last_current_frame_centroid_e_distance = self.return_euclidean_distance(
+                    self.current_frame_face_centroid_list[i], self.last_frame_face_centroid_list[j])
 
-            coord=[]
+                e_distance_current_frame_person_x_list.append(
+                    self.last_current_frame_centroid_e_distance)
 
-            for(x,y,w,h) in features:
-                cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),3)
-                id,predict=clf.predict(gray_image[y:y+h,x:x+w])
-                confidence=int((100*(1-predict/300)))
+            last_frame_num = e_distance_current_frame_person_x_list.index(
+                min(e_distance_current_frame_person_x_list))
+            self.current_frame_face_id_list[i] = self.last_frame_face_id_list[last_frame_num]
 
-                my_cursor=self.conn.cursor()
-                my_cursor.execute("SELECT Faculty_code,Name,Department FROM faculty WHERE facultyId="+str(id))
-                result=my_cursor.fetchone()
-                faculty_code=result[0]
-                faculty_name=result[1]
-                faculty_department=result[2]
-                
+    def draw_note(self, img_rd):
+        #  / Add some info on windows
+        cv2.putText(img_rd, "Faces:  " + str(self.current_frame_face_cnt), (20, 20), self.font, 0.8, (0, 255, 0), 1,cv2.LINE_AA)
 
-                if confidence>77:
-                    cv2.putText(img,f"Faculty Code:{faculty_code}",(x,y-5),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-                    cv2.putText(img,f"Name:{faculty_name}",(x,y-30),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-                    cv2.putText(img,f"Department:{faculty_department}",(x,y-55),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-                else:
-                    cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),3)
-                    cv2.putText(img,"Unknown Face",(x,y-5),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),3)
-                
-                coord=[x,y,w,h]
-            return coord
-        
-        def recognize(img,clf,faceCascade):
-            coord=draw_boundray(img,faceCascade,1.1,10,(255,25,255),"Face",clf)
-            return img
-        
-        
-        
-        faceCascade=cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
-        clf=cv2.face.LBPHFaceRecognizer_create()
-        clf.read("faculty/"+"faculty_classifier.xml")
+        for i in range(len(self.current_frame_face_id_list)):
+            img_rd = cv2.putText(img_rd, "Face_" + str(i + 1), tuple(
+                [int(self.current_frame_face_centroid_list[i][0]), int(self.current_frame_face_centroid_list[i][1])]),
+                                 self.font, 0.8, (255, 190, 0), 1, cv2.LINE_AA)
 
+    def face_recog(self):   
         video_cap=cv2.VideoCapture(0)
 
-        while True:
-            ret,img=video_cap.read()
-            img=recognize(img,clf,faceCascade)
-            cv2.imshow("Welcome to face recognition",img)
+        # 1.  Get faces known from "encodings.pickle"
+        if self.get_face_database():
+            while video_cap.isOpened():
+                ret,img_rd=video_cap.read()
 
-            if cv2.waitKey(1) == 27:
-                break
-        video_cap.release()
-        cv2.destroyAllWindows()
+                # 2.  Detect faces for frame X
+                faces = detector(img_rd, 1)
+
+                # 3.  Update cnt for faces in frames
+                self.last_frame_face_cnt = self.current_frame_face_cnt
+                self.current_frame_face_cnt = len(faces)
+
+                # 4.  Update the face name list in last frame
+                self.last_frame_face_id_list = self.current_frame_face_id_list[:]
+
+                # 5.  update frame centroid list
+                self.last_frame_face_centroid_list = self.current_frame_face_centroid_list
+                self.current_frame_face_centroid_list = []
+
+                # 6.1  if cnt not changes
+                if (self.current_frame_face_cnt == self.last_frame_face_cnt) and (self.reclassify_interval_cnt != self.reclassify_interval):
+                    logging.debug("scene 1:   No face cnt changes in this frame!!!")
+
+                    self.current_frame_face_position_list = []
+
+                    if "unknown" in self.current_frame_face_id_list:
+                        self.reclassify_interval_cnt += 1
+                    
+                    if self.current_frame_face_cnt != 0:
+                        for k, d in enumerate(faces):
+                            self.current_frame_face_position_list.append(tuple(
+                                [faces[k].left(), int(faces[k].bottom() + (faces[k].bottom() - faces[k].top()) / 4)]))
+                            self.current_frame_face_centroid_list.append(
+                                [int(faces[k].left() + faces[k].right()) / 2,
+                                 int(faces[k].top() + faces[k].bottom()) / 2])
+
+                            img_rd = cv2.rectangle(img_rd,
+                                                   tuple([d.left(), d.top()]),
+                                                   tuple([d.right(), d.bottom()]),
+                                                   (255, 255, 255), 2)
+                    
+                    #  Multi-faces in current frame, use centroid-tracker to track
+                    if self.current_frame_face_cnt != 1:
+                        self.centroid_tracker()
+                    
+                    for i in range(self.current_frame_face_cnt):
+                        # 6.2 Write names under ROI
+                        img_rd = cv2.putText(img_rd, str(self.current_frame_face_id_list[i]), self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
+
+                    self.draw_note(img_rd)
+                
+                # 6.2  If cnt of faces changes, 0->1 or 1->0 or ...
+                else:
+                    logging.debug("scene 2: / Faces cnt changes in this frame")
+                    self.current_frame_face_position_list = []
+                    self.current_frame_face_X_e_distance_list = []
+                    self.current_frame_face_feature_list = []
+                    self.reclassify_interval_cnt = 0
+
+                    # 6.2.1  Face cnt decreases: 1->0, 2->1, ...
+                    if self.current_frame_face_cnt == 0:
+                        logging.debug("  / No faces in this frame!!!")
+                        # clear list of names and features
+                        self.current_frame_face_id_list = []
+
+                    # 6.2.2 / Face cnt increase: 0->1, 0->2, ..., 1->2, ...
+                    else:
+                        logging.debug("  scene 2.2  Get faces in this frame and do face recognition")
+                        self.current_frame_face_id_list = []
+                        for i in range(len(faces)):
+                            shape = predictor(img_rd, faces[i])
+                            self.current_frame_face_feature_list.append(
+                                face_reco_model.compute_face_descriptor(img_rd, shape))
+                            self.current_frame_face_id_list.append("unknown")
+
+                        # 6.2.2.1 Traversal all the faces in the database
+                        for k in range(len(faces)):
+                            logging.debug("  For face %d in current frame:", k + 1)
+                            self.current_frame_face_centroid_list.append(
+                                [int(faces[k].left() + faces[k].right()) / 2,
+                                 int(faces[k].top() + faces[k].bottom()) / 2])
+
+                            self.current_frame_face_X_e_distance_list = []
+
+                            # 6.2.2.2  Positions of faces captured
+                            self.current_frame_face_position_list.append(tuple(
+                                [faces[k].left(), int(faces[k].bottom() + (faces[k].bottom() - faces[k].top()) / 4)]))
+
+                            # 6.2.2.3 
+                            # For every faces detected, compare the faces in the database
+                            for i in range(len(self.face_features_known_list)):
+                                # 
+                                if str(self.face_features_known_list[i][0]) != '0.0':
+                                    e_distance_tmp = self.return_euclidean_distance(
+                                        self.current_frame_face_feature_list[k],
+                                        self.face_features_known_list[i])
+                                    logging.debug("      with person %d, the e-distance: %f", i + 1, e_distance_tmp)
+                                    self.current_frame_face_X_e_distance_list.append(e_distance_tmp)
+                                else:
+                                    #  person_X
+                                    self.current_frame_face_X_e_distance_list.append(999999999)
+
+                            # 6.2.2.4 / Find the one with minimum e distance
+                            similar_person_num = self.current_frame_face_X_e_distance_list.index(
+                                min(self.current_frame_face_X_e_distance_list))
+
+                            if min(self.current_frame_face_X_e_distance_list) < 0.4:
+                                recog_id =self.face_id_known_list[similar_person_num]
+                                name = self.get_details(recog_id)
+                                self.current_frame_face_id_list[k] = name
+                                logging.debug("  Face recognition result: %s",
+                                              self.face_id_known_list[similar_person_num])
+
+                                # print(type(self.face_id_known_list[similar_person_num]))
+                                print(name)
+                                
+                            else:
+                                logging.debug("  Face recognition result: Unknown person")
+
+                        # 7.  / Add note on cv2 window
+                        self.draw_note(img_rd)
+
+                cv2.imshow("Welcome to face recognition",img_rd)
+
+                if cv2.waitKey(1) == 27:
+                    break
+            video_cap.release()
+            cv2.destroyAllWindows()
 
 
-
-
-                            
-        
-        
         
 
 if __name__=="__main__":
