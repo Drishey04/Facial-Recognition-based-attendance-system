@@ -12,6 +12,7 @@ import dlib
 import pandas as pd
 import csv
 import time
+import pickle
 
 # Use frontal face detector of Dlib
 detector = dlib.get_frontal_face_detector()
@@ -686,68 +687,64 @@ class Student:
                 print(f"Error creating directory: {e}")
                 return None
     
-    def return_128d_features(self, path_img):
-        # img=Image.open(image)
-        # imageNp=np.array(img,'uint8')
-        # print(path_img)
-        img_rd = cv2.imread(path_img)
-        gray = cv2.cvtColor(img_rd, cv2.COLOR_BGR2GRAY)
-
-        faces = detector(gray, 1)
-
-        logging.info("%-40s %-20s", " Image with faces detected:", path_img)
+    def face_encodings(self, img):
+        faces = detector(img, 1)
 
         # For photos of faces saved, we need to make sure that we can detect faces from the cropped images
         if len(faces) != 0:
-            shape = predictor(img_rd, faces[0])
-            face_descriptor = np.array(face_reco_model.compute_face_descriptor(img_rd, shape))
+            shape = predictor(img, faces[0])
+            face_descriptor = np.array(face_reco_model.compute_face_descriptor(img, shape))
         else:
             face_descriptor = 0
             logging.warning("no face")
         return face_descriptor
+    
 
     def train_classifier(self):
 
         Training=messagebox.askyesno("Training","Do you want to train selected data?",parent=self.root)
         if Training>0:
-            paths = []
-            faces=[]
-            ids=[]
-
             if self.student_ids:
-                user_directory = self.create_user_directory()
-                feature_file = user_directory + "/features.csv"
-                # df = pd.read_csv(feature_file)
-                with open(feature_file,"w",newline="") as csvfile:
-                    writer = csv.writer(csvfile)
-                
+                id_encondings_dict = {} 
 
-                    for i in self.student_ids:
-                        user_folder = f"student/data/user_{i}"
-                        features_list_personX = []
+                for id in self.student_ids:
+                    user_folder = f"student/data/user_{id}"
+                    features_list_personX = []
 
-                        # Check if the user folder exists
-                        if os.path.exists(user_folder):
+                    # Check if the user folder exists
+                    if os.path.exists(user_folder):
                             # Iterate over files in the user folder
-                            for filename in os.listdir(user_folder):
-                                features_128d = self.return_128d_features(user_folder+"/"+filename)
-                                if features_128d != 0:
-                                    features_list_personX.append(features_128d)
-                                
-                                img=Image.open(user_folder+"/"+filename)
-                                imageNp=np.array(img,'uint8')
-                                cv2.imshow("Training",imageNp)
-                                cv2.waitKey(1)==27
+                        for filename in os.listdir(user_folder):
+                            logging.info("%-40s %-20s", " Image with faces detected:", user_folder+"/"+filename)
+                            img_rd = cv2.imread(user_folder+"/"+filename)
+                            encodings = self.face_encodings(img_rd)
+                            
+                            features_list_personX.append(encodings)
+                            
+                            img=Image.open(user_folder+"/"+filename)
+                            imageNp=np.array(img,'uint8')
+                            cv2.imshow("Training",imageNp)
+                            cv2.waitKey(1)==27
                                 
                                     
-                        if features_list_personX:
-                            features_mean_personX = np.array(features_list_personX, dtype=object).mean(axis=0)
-                        else:
-                            features_mean_personX = np.zeros(128, dtype=object, order='C')       
+                    if features_list_personX:
+                        features_mean_personX = np.array(features_list_personX, dtype=object).mean(axis=0)
+                    else:
+                        features_mean_personX = np.zeros(128, dtype=object, order='C')       
 
-                        features_mean_personX = np.insert(features_mean_personX, 0, i, axis=0) 
-                        writer.writerow(features_mean_personX)     
-                        
+                    e = id_encondings_dict.get(id, [])
+                    e.extend(features_mean_personX)
+                    # print(features_mean_personX.shape)
+                    id_encondings_dict[id] = e
+
+                user_directory = self.create_user_directory()
+                
+                feature_file = user_directory + "/encodings.pickle"
+                             
+                with open(feature_file, "wb") as f:
+                    # print(id_encondings_dict)
+                    pickle.dump(id_encondings_dict, f) 
+
                 cv2.destroyAllWindows()
                 messagebox.showinfo("Result","Training datasets completed!!!",parent=self.root)
                 self.student_ids = []

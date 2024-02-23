@@ -589,8 +589,6 @@ class Faculty:
     def face_encodings(self, img):
         faces = detector(img, 1)
 
-        logging.info("%-40s %-20s", " Image with faces detected:", img)
-
         # For photos of faces saved, we need to make sure that we can detect faces from the cropped images
         if len(faces) != 0:
             shape = predictor(img, faces[0])
@@ -606,52 +604,39 @@ class Faculty:
 
         Training=messagebox.askyesno("Training","Do you want to train selected data?",parent=self.root)
         if Training>0:
-            paths = []
-            faces=[]
-            ids=[]
-
             if self.faculty_ids:
                 # user_directory = self.create_user_directory()
-                feature_file =  "faculty/features.csv"
-                id_encondings_dict = {}
-                # df = pd.read_csv(feature_file)
-                with open(feature_file,"w",newline="") as csvfile:
-                    writer = csv.writer(csvfile)
+                id_encondings_dict = {} 
 
-                
+                for id in self.faculty_ids:
+                    user_folder = f"faculty/data/user_{id}"
+                    features_list_personX = []
 
-                    for id in self.faculty_ids:
-                        user_folder = f"faculty/data/user_{id}"
-                        features_list_personX = []
-
-                        # Check if the user folder exists
-                        if os.path.exists(user_folder):
-                            # Iterate over files in the user folder
-                            for filename in os.listdir(user_folder):
-                                img_rd = cv2.imread(user_folder+"/"+filename)
-                                encodings = self.face_encodings(img_rd)
-                                # if features_128d:
-                                
-                                
-                                features_list_personX.append(encodings)
-                                
-                                img=Image.open(user_folder+"/"+filename)
-                                imageNp=np.array(img,'uint8')
-                                cv2.imshow("Training",imageNp)
-                                cv2.waitKey(1)==27
+                    # Check if the user folder exists
+                    if os.path.exists(user_folder):
+                        # Iterate over files in the user folder
+                        for filename in os.listdir(user_folder):
+                            logging.info("%-40s %-20s", " Image with faces detected:", user_folder+"/"+filename)
+                            img_rd = cv2.imread(user_folder+"/"+filename)
+                            encodings = self.face_encodings(img_rd)
+                            
+                            features_list_personX.append(encodings)
+                            
+                            img=Image.open(user_folder+"/"+filename)
+                            imageNp=np.array(img,'uint8')
+                            cv2.imshow("Training",imageNp)
+                            cv2.waitKey(1)==27
                                 
                         
-                        if features_list_personX:
-                            features_mean_personX = np.array(features_list_personX, dtype=object).mean(axis=0)
-                        else:
-                            features_mean_personX = np.zeros(128, dtype=object, order='C')       
+                    if features_list_personX:
+                        features_mean_personX = np.array(features_list_personX, dtype=object).mean(axis=0)
+                    else:
+                        features_mean_personX = np.zeros(128, dtype=object, order='C')       
                         
-                        e = id_encondings_dict.get(id, [])
-                        e.extend(features_mean_personX)
-                        id_encondings_dict[id] = e
-                        # features_mean_personX = np.insert(features_mean_personX, 0, id, axis=0) 
-
-                        # writer.writerow(features_mean_personX)     
+                    e = id_encondings_dict.get(id, [])
+                    e.extend(features_mean_personX)
+                    id_encondings_dict[id] = e
+                             
                 with open("faculty/encodings.pickle", "wb") as f:
                     # print(id_encondings_dict)
                     pickle.dump(id_encondings_dict, f)   
@@ -711,6 +696,7 @@ class Faculty:
             img_rd = cv2.putText(img_rd, "Face_" + str(i + 1), tuple(
                 [int(self.current_frame_face_centroid_list[i][0]), int(self.current_frame_face_centroid_list[i][1])]),
                                  self.font, 0.8, (255, 190, 0), 1, cv2.LINE_AA)
+
 
     def face_recog(self):   
         video_cap=cv2.VideoCapture(0)
@@ -851,3 +837,42 @@ if __name__=="__main__":
     root=Tk()
     obj=Faculty(root)
     root.mainloop()
+
+
+    
+    #             if confidence>77:
+    #                 if self.var_faculty_name_verify:
+    #                     if self.var_faculty_id.get() == str(id):
+    #                         self.reset()
+    #                         # self.root.after(2000, self.face_recogition)
+    #                         return coord
+    #                     else:
+    #                         messagebox.showerror("Verification Failed","Resuming Attendance")
+    #                         self.take_attendance()
+    #                         return coord
+
+
+    #                 self.var_faculty_id.set(id)
+    #                 self.fetch_faculty_details()
+                    
+                    
+    #                 cv2.putText(img,f"Faculty Code:{self.var_faculty_code}",(x,y-5),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
+    #                 cv2.putText(img,f"Name:{self.var_faculty_name}",(x,y-30),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
+    #                 cv2.putText(img,f"Department:{self.var_department}",(x,y-55),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
+    #                 # if not self.var_faculty_name_verify:
+
+                    
+    #                 self.faculty_face_recog_over=True
+    #                 self.display_faculty_info_label()
+
+
+
+                # if confidence>80:
+    #                 self.fetch_student_details(id)
+    #                 print(f"{self.student_name} : {confidence}")
+    #                 cv2.putText(img,f"Name:{self.student_name.get()}",(x,y-5),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
+    #                 cv2.putText(img,f"Roll No:{self.student_rollno.get()}",(x,y-30),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
+    #                 cv2.putText(img,f"Department:{self.student_department.get()}",(x,y-55),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
+    #                 self.update_student_info_label()
+    #                 self.mark_attendance()
+                    
