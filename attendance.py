@@ -14,6 +14,10 @@ import pickle
 import logging
 import dlib
 
+
+# Provide your camera source index if it's not the default (0)
+camera_source_index = 0
+
 # Use frontal face detector of Dlib
 detector = dlib.get_frontal_face_detector()
 #  Get face landmarks
@@ -77,7 +81,7 @@ class Attendance:
         self.faculty_face_recog_over=False
         self.student_attendance_started=False
         self.student_attendance_over=False
-        self.restart_timer = 20 
+        self.restart_timer = 60 
         # self.faceCascade=cv2.CascadeClassifier("haarcascade_frontalface_default.xml")
 
         self.recog_success = False
@@ -125,25 +129,22 @@ class Attendance:
         img=img.resize((880,590))
         self.landingbgd=ImageTk.PhotoImage(img)
 
-        bg_img=Label(self.root,image=self.landingbgd)
-        bg_img.place(x=0,y=0,width=880,height=590)
+        self.bg_img=Label(self.root,image=self.landingbgd)
+        self.bg_img.place(x=0,y=0,width=880,height=590)
 
-        # title_lbL=Label(bg_img,text="Attendance Taker",font=("times new roman", 30, "bold"), bg="white",fg="red")
+        # title_lbL=Label(self.bg_img,text="Attendance Taker",font=("times new roman", 30, "bold"), bg="white",fg="red")
         # title_lbL.place(x=0,y=0,width=880,height=50)
 
        
 
         # Main frame
-        self.main_frame = Frame(bg_img, bd=2, relief=SUNKEN)
+        self.main_frame = Frame(self.bg_img, bd=2, relief=SUNKEN)
         self.main_frame.place(x=17, y=70, width=320, height=480)
 
 
-        self.init_attendance_btn=Button(bg_img,text="Turn on Face Recognizer",command=self.intialize_attendance,width=20,cursor="hand2",font=("times new roman", 15, "bold"),bg="orange",fg="white")
-        self.init_attendance_btn.place(x=50,y=10)
-
         # Add a Canvas widget for video display
         
-        self.canvas = Canvas(bg_img, width=60, height=40)
+        self.canvas = Canvas(self.bg_img, width=60, height=40)
         self.canvas.place(x=350,y=70,width=500,height=480)
 
         #top frame
@@ -151,12 +152,22 @@ class Attendance:
         self.Top_frame.place(x=10,y=40,width=300,height=130)
 
         #middle frame
-        self.Middle_frame=LabelFrame(bg_img,bd=2,relief=SUNKEN,font=("times new roman", 12, "bold"))
+        self.Middle_frame=LabelFrame(self.bg_img,bd=2,relief=SUNKEN,font=("times new roman", 12, "bold"))
         self.Middle_frame.place(x=495, y=10,width=215,height=40)
 
         #bottom frame
         self.Bottom_frame=LabelFrame(self.main_frame,bd=2,relief=RIDGE,text="Student Details",font=("times new roman", 12, "bold"))
         self.Bottom_frame.place(x=10,y=230,width=300,height=170)
+
+        #buttons frame
+        self.Button_frame=LabelFrame(self.bg_img,bd=2,relief=RIDGE,font=("times new roman", 12, "bold"))
+        self.Button_frame.place(x=30,y=10,width=254,height=44)
+
+        
+        self.init_attendance_btn=Button(self.Button_frame,text="Turn on Face Recognizer",command=self.intialize_attendance,width=20,cursor="hand2",font=("times new roman", 15, "bold"),bg="orange",fg="white")
+        self.init_attendance_btn.place(x=0,y=0)
+
+
 
         # #bottom frame
         # self.Marked_frame=LabelFrame(self.Bottom_frame,bd=2,relief=GROOVE)
@@ -290,6 +301,9 @@ class Attendance:
         self.student_attendance_started=False
         self.load__faculty_encodings()
 
+        
+        
+
     def take_attendance(self):
         self.faculty_face_recog_over=True
         self.student_attendance_started=True
@@ -298,9 +312,19 @@ class Attendance:
         
         self.get_all_subjects()
         self.load__student_encodings()
+
+        
+        self.reclassify_interval_cnt = 5
+        self.last_frame_face_cnt == 0
         
         
         self.update_timer(self.restart_timer)
+
+        if self.attendance_btn:
+            self.attendance_btn.destroy()
+
+        self.end_attendance_btn=Button(self.Button_frame,text="End Attendance",command=self.end_attendance,width=20,cursor="hand2",font=("times new roman", 15, "bold"),bg="red",fg="white")
+        self.end_attendance_btn.place(x=0,y=0)
         # self.face_recog_student()
         # Start the 10-minute timer
           # 600 seconds = 10 minutes
@@ -357,6 +381,10 @@ class Attendance:
     def reset(self):
         self.mark_attendance()
 
+        
+        self.reclassify_interval_cnt = 5
+        self.last_frame_face_cnt  == 0
+
         # Clear faculty details
         self.var_faculty_id.set("")
         self.var_faculty_code.set("")
@@ -379,7 +407,7 @@ class Attendance:
 
         # Clear timer
         self.var_timer.set("")
-        self.restart_timer = 20
+        self.restart_timer = 60
 
         # Reset flags
         self.faculty_face_recog_start = False
@@ -403,8 +431,8 @@ class Attendance:
         if self.subject_code_combo:
             self.subject_code_combo.destroy()
 
-        if self.attendance_btn:
-            self.attendance_btn.destroy()
+        # if self.attendance_btn:
+        #     self.attendance_btn.destroy()
 
         if self.end_attendance_btn:
             self.end_attendance_btn.destroy()
@@ -414,6 +442,9 @@ class Attendance:
 
         for widget in self.Middle_frame.winfo_children():
             widget.destroy()
+        
+        self.init_attendance_btn=Button(self.Button_frame,text="Turn on Face Recognizer",command=self.intialize_attendance,width=20,cursor="hand2",font=("times new roman", 15, "bold"),bg="orange",fg="white")
+        self.init_attendance_btn.place(x=0,y=0)
 
 
     #*************Displaying content******************************
@@ -422,6 +453,9 @@ class Attendance:
         # self.fetch_faculty_details()
         self.fetch_subject_details()
         welcome_text = "Welcome, " + self.var_faculty_name.get() + "."
+
+        if self.init_attendance_btn:
+            self.init_attendance_btn.destroy()
 
 
         self.faculty_name_label=Label(self.main_frame,text=welcome_text,font=("times new roman", 12, "bold"))
@@ -438,12 +472,8 @@ class Attendance:
         self.fetch_name_label.grid(row=1,column=2)
 
 
-        self.attendance_btn=Button(self.main_frame,text="Take Attendance",command=self.take_attendance,width=20,cursor="hand2",font=("times new roman", 15, "bold"),bg="darkgreen",fg="white")
-        self.attendance_btn.place(x=33,y=180)
-
-        self.end_attendance_btn=Button(self.main_frame,text="End Attendance",command=self.end_attendance,width=20,cursor="hand2",font=("times new roman", 15, "bold"),bg="red",fg="white")
-        self.end_attendance_btn.place(x=33,y=420)
-
+        self.attendance_btn=Button(self.Button_frame,text="Take Attendance",command=self.take_attendance,width=20,cursor="hand2",font=("times new roman", 15, "bold"),bg="darkgreen",fg="white")
+        self.attendance_btn.place(x=0,y=0)
 
         self.student_fetch_name_label=Label(self.Bottom_frame,text="",font=("times new roman", 12, "bold"))
         self.student_fetch_name_label.grid(row=0,column=2,padx=2,pady=5,sticky=W)
@@ -493,142 +523,12 @@ class Attendance:
 
 
 
-    #*****************Recognizer function******************
-    # def face_recogition(self):
-    #     def draw_boundray_faculty(img,classifier,scaleFactor,minNeighbors,color,text,clf):
-    #         gray_image=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    #         features=classifier.detectMultiScale(gray_image,scaleFactor,minNeighbors)
-
-    #         coord=[]
-
-    #         for(x,y,w,h) in features:
-    #             cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),3)
-    #             id,predict=clf.predict(gray_image[y:y+h,x:x+w])
-    #             confidence=int((100*(1-predict/300)))
-                
-
-    #             if confidence>77:
-    #                 if self.var_faculty_name_verify:
-    #                     if self.var_faculty_id.get() == str(id):
-    #                         self.reset()
-    #                         # self.root.after(2000, self.face_recogition)
-    #                         return coord
-    #                     else:
-    #                         messagebox.showerror("Verification Failed","Resuming Attendance")
-    #                         self.take_attendance()
-    #                         return coord
-
-
-    #                 self.var_faculty_id.set(id)
-    #                 self.fetch_faculty_details()
-                    
-                    
-    #                 cv2.putText(img,f"Faculty Code:{self.var_faculty_code}",(x,y-5),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-    #                 cv2.putText(img,f"Name:{self.var_faculty_name}",(x,y-30),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-    #                 cv2.putText(img,f"Department:{self.var_department}",(x,y-55),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-    #                 # if not self.var_faculty_name_verify:
-
-                    
-    #                 self.faculty_face_recog_over=True
-    #                 self.display_faculty_info_label()
-    #             else:
-    #                 cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),3)
-    #                 cv2.putText(img,"Unknown Face",(x,y-5),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),3)
-                
-    #             coord=[x,y,w,h]
-    #         return coord
-        
-    #     def draw_boundray_student(img,classifier,scaleFactor,minNeighbors,color,text,clf):
-    #         gray_image=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    #         features=classifier.detectMultiScale(gray_image,scaleFactor,minNeighbors)
-
-    #         coord=[]
-
-    #         for(x,y,w,h) in features:
-    #             cv2.rectangle(img,(x,y),(x+w,y+h),(0,255,0),3)
-    #             id,predict=clf.predict(gray_image[y:y+h,x:x+w])
-    #             confidence=int((100*(1-predict/300)))
-
-                
-                
-
-    #             if confidence>80:
-    #                 self.fetch_student_details(id)
-    #                 print(f"{self.student_name} : {confidence}")
-    #                 cv2.putText(img,f"Name:{self.student_name.get()}",(x,y-5),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-    #                 cv2.putText(img,f"Roll No:{self.student_rollno.get()}",(x,y-30),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-    #                 cv2.putText(img,f"Department:{self.student_department.get()}",(x,y-55),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),2)
-    #                 self.update_student_info_label()
-    #                 self.mark_attendance()
-                    
-    #             else:
-    #                 cv2.rectangle(img,(x,y),(x+w,y+h),(0,0,255),3)
-    #                 cv2.putText(img,"Unknown Face",(x,y-5),cv2.FONT_HERSHEY_COMPLEX,0.8,(255,255,255),3)
-                
-    #             coord=[x,y,w,h]
-    #         return coord
-        
-    #     def recognize_faculty(img,clf,faceCascade):
-    #         coord=draw_boundray_faculty(img,faceCascade,1.1,15,(255,25,255),"Face",clf)
-    #         return img
-
-    #     def recognize_student(img,clf,faceCascade):
-    #         coord=draw_boundray_student(img,faceCascade,1.1,20,(255,25,255),"Face",clf)
-    #         return img
-        
-        
-
-        
-    #     video_cap = self.vid
-
-    #     while True:      
-    #         ret,img=video_cap.read()
-    #         if not ret or img is None:
-    #         # Break out of the loop if the frame is empty
-    #             break
-
-
-    #         if (self.faculty_face_recog_start and not self.faculty_face_recog_over and not self.student_attendance_started) or (self.student_attendance_over and self.var_faculty_name_verify):  
-    #             img=recognize_faculty(img,self.clf1,self.faceCascade)
-
-    #         if self.faculty_face_recog_over and self.student_attendance_started and not self.student_attendance_over:
-    #             img=recognize_student(img,self.clf2,self.faceCascade)
-            
-    #         # cv2.imshow("Welcome to face recognition",img)
-
-    #         # Convert the frame to PIL Image
-    #         img = cv2.resize(img, (500, 480))
-    #         img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-
-    #         # Display the image on the Tkinter canvas
-    #         img_tk = ImageTk.PhotoImage(img)
-    #         self.canvas.config(width=img_tk.width(), height=img_tk.height())
-    #         self.canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
-
-            
-    #         root.update_idletasks()
-    #         root.update()
-
-
-                
+    #*****************Recognizer function******************  
     def return_euclidean_distance(self,feature_1, feature_2):
         feature_1 = np.array(feature_1)
         feature_2 = np.array(feature_2)
         dist = np.sqrt(np.sum(np.square(feature_1 - feature_2)))
         return dist
-    
-    def get_face_database(self):
-        if os.path.exists("faculty/encodings.pickle"):
-            with open("faculty/encodings.pickle", "rb") as f:
-                id_encodings_dict = pickle.load(f)
-            for id in id_encodings_dict.keys():
-                self.face_id_known_list.append(id)
-                self.face_features_known_list.append(id_encodings_dict[id])
-            
-            return 1
-        else:
-            logging.warning("encodings.pickle.csv not found!")
-            return 0
 
     def centroid_tracker(self):
         for i in range(len(self.current_frame_face_centroid_list)):
@@ -647,7 +547,7 @@ class Attendance:
 
     def draw_note(self, img_rd):
         #  / Add some info on windows
-        cv2.putText(img_rd, "Faces:  " + str(self.current_frame_face_cnt), (20, 20), self.font, 0.8, (0, 255, 0), 1,cv2.LINE_AA)
+        cv2.putText(img_rd, str(self.var_timer.get()), (10, 30), self.font, 0.8, (0, 0, 255), 1,cv2.LINE_AA)
 
         # for i in range(len(self.current_frame_face_id_list)):
         #     img_rd = cv2.putText(img_rd, "Face_" + str(i + 1), tuple(
@@ -701,7 +601,7 @@ class Attendance:
             
             
 
-            self.draw_note(img_rd)
+            # self.draw_note(img_rd)
                 
         # 6.2  If cnt of faces changes, 0->1 or 1->0 or ...
         else:
@@ -778,11 +678,9 @@ class Attendance:
                     
 
                 # 7.  / Add note on cv2 window
-                self.draw_note(img_rd)
+                # self.draw_note(img_rd)
         return img_rd
 
-
-        
 
     def face_recogition(self):
          
@@ -800,22 +698,17 @@ class Attendance:
 
                 if self.recog_success:
                     
-
-                    for i in range(self.current_frame_face_cnt):
-                        
+                    for i in range(self.current_frame_face_cnt): 
                         id = self.current_frame_face_id_list[i]
-
                         if id != "unknown":
                             self.var_faculty_id.set(id)
                             self.fetch_faculty_details()
 
                             self.current_frame_face_id_list[i] = self.var_faculty_name.get()
 
-                        
                             if self.var_faculty_name_verify:
                                 if self.var_faculty_id.get() == str(id):
-                                    self.reset()
-                                    # self.root.after(2000, self.face_recogition)
+                                    self.reset()   
                                 else:
                                     messagebox.showerror("Verification Failed","Resuming Attendance")
                                     self.take_attendance()
@@ -823,11 +716,8 @@ class Attendance:
                                 self.faculty_face_recog_over=True
                                 self.display_faculty_info_label()
 
-                    self.current_frame_face_position_list = []
-                    self.current_frame_face_X_e_distance_list = []
-                    self.current_frame_face_feature_list = []
-                    self.reclassify_interval_cnt = 0
-                    self.current_frame_face_cnt == 0
+                    # self.reclassify_interval_cnt = 0
+                    # self.current_frame_face_cnt = 0
                     
                     
 
@@ -850,11 +740,8 @@ class Attendance:
                             self.update_student_info_label()
                             self.mark_attendance()
                     
-                    self.current_frame_face_position_list = []
-                    self.current_frame_face_X_e_distance_list = []
-                    self.current_frame_face_feature_list = []
-                    self.reclassify_interval_cnt = 0
-                    self.current_frame_face_cnt == 0
+                    # self.reclassify_interval_cnt = 0
+                    # self.current_frame_face_cnt = 0
             
 
             # Convert the frame to PIL Image
@@ -872,8 +759,7 @@ class Attendance:
 
 
 
-    #***********classifier loading functions************************
-
+    #***********encodings loading functions************************
     def load__student_encodings(self):
         classifier_directory="student/"+str(self.var_degree.get())+"/"+str(self.var_department.get())+"/"+str(self.var_semester.get())
         self.face_id_known_list = []
@@ -903,8 +789,8 @@ class Attendance:
             for id in id_encodings_dict.keys():
                 self.face_id_known_list.append(id)
                 self.face_features_known_list.append(id_encodings_dict[id])
-            print("size faculty:")
-            print(len(self.face_features_known_list))
+            # print("size faculty:")
+            # print(len(self.face_features_known_list))
             return 1
         else:
             logging.warning("encodings.pickle.csv not found!")
@@ -994,14 +880,6 @@ class Attendance:
             df.to_csv(csv_file_path, index=False)
 
 
-
-
-        
-
-
-
-# Provide your camera source index if it's not the default (0)
-camera_source_index = 0
 
 if __name__=="__main__":
     root=Tk()

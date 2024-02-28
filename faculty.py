@@ -750,7 +750,7 @@ class Faculty:
                         # 6.2 Write names under ROI
                         img_rd = cv2.putText(img_rd, str(self.current_frame_face_id_list[i]), self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
 
-                    self.draw_note(img_rd)
+                    # self.draw_note(img_rd)
                 
                 # 6.2  If cnt of faces changes, 0->1 or 1->0 or ...
                 else:
@@ -821,7 +821,7 @@ class Faculty:
                                 logging.debug("  Face recognition result: Unknown person")
 
                         # 7.  / Add note on cv2 window
-                        self.draw_note(img_rd)
+                        # self.draw_note(img_rd)
 
                 cv2.imshow("Welcome to face recognition",img_rd)
 

@@ -73,6 +73,8 @@ class Student:
 
         self.student_ids = []
 
+        self.no_face=False
+
 
 
         #landing page image and title
@@ -335,7 +337,7 @@ class Student:
     #create database connection*********************
     def create_connection(self):
         return mysql.connector.connect(
-            host="localhost",
+            host="192.168.0.100",
             username="root",
             password="Drishey@9845",
             database="face_recognizer"
@@ -348,10 +350,12 @@ class Student:
         else:
             try:
                 my_cursor=self.conn.cursor()
-                add_student = ("INSERT INTO student (Department, Degree, Semester, Division, Name, Roll_no, Captured_face) "
-                                "VALUES (%s, %s, %s, %s, %s, %s, %s)")
+                student_id = self.get_last_student_id() + 1
+                add_student = ("INSERT INTO student (studentId, Department, Degree, Semester, Division, Name, Roll_no, Captured_face) "
+                                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)")
                 
-                student_data=(self.var_department.get(),
+                student_data=(student_id,
+                              self.var_department.get(),
                                 self.var_degree.get(),
                                 self.var_semester.get(),
                                 self.var_division.get(),
@@ -553,8 +557,9 @@ class Student:
                 if new_student > 0:
                     student_id = self.var_studentId.get()
                     if self.var_captured_face.get()=="Yes":
-                        messagebox.showwarning("Operation already done", "This operation has already been done.", parent=self.root)
-                        return
+                        os.rmdir(f"student/data/user_{student_id}")
+                        messagebox.showwarning("Operation already done", "Removed previous folder.", parent=self.root)
+                        # return
                 else:
                     if not new_student:
                         student_id = self.get_last_student_id() + 1
@@ -695,7 +700,8 @@ class Student:
             shape = predictor(img, faces[0])
             face_descriptor = np.array(face_reco_model.compute_face_descriptor(img, shape))
         else:
-            face_descriptor = 0
+            face_descriptor = np.zeros(128, dtype=object, order='C') 
+            self.no_face = True
             logging.warning("no face")
         return face_descriptor
     
@@ -719,7 +725,11 @@ class Student:
                             img_rd = cv2.imread(user_folder+"/"+filename)
                             encodings = self.face_encodings(img_rd)
                             
-                            features_list_personX.append(encodings)
+                            if self.no_face:
+                                self.no_face=False
+                                print("No face descrpitors were obtained")
+                            else:
+                                features_list_personX.append(encodings)
                             
                             img=Image.open(user_folder+"/"+filename)
                             imageNp=np.array(img,'uint8')
