@@ -75,6 +75,10 @@ class Attendance:
         self.var_timer=StringVar()
         
         self.csv_subject_code=[]
+
+        self.recog_faculty_mode = False
+        self.recog_student_mode = False
+        
         
 
         self.faculty_face_recog_start=False
@@ -296,6 +300,9 @@ class Attendance:
     #*************Attendance managing functions********************
 
     def intialize_attendance(self):
+        self.recog_faculty_mode=True
+        self.recog_student_mode = False
+
         self.faculty_face_recog_start=True
         self.faculty_face_recog_over=False
         self.student_attendance_started=False
@@ -305,8 +312,10 @@ class Attendance:
         
 
     def take_attendance(self):
-        self.faculty_face_recog_over=True
-        self.student_attendance_started=True
+
+        self.recog_student_mode = True
+        self.recog_faculty_mode = False
+
         self.student_attendance_over=False
 
         
@@ -330,9 +339,7 @@ class Attendance:
           # 600 seconds = 10 minutes
 
     def end_attendance(self):
-        self.student_attendance_started=False
         self.student_attendance_over=True
-        self.faculty_face_recog_over=False
 
 
     #***********timer and reset function***************************          
@@ -357,6 +364,8 @@ class Attendance:
                 if Ended>0:
                     messagebox.showinfo("Verification", "Show faculty face to end the attendance")
                     self.var_faculty_name_verify=True
+                    self.recog_faculty_mode = True
+                    self.recog_student_mode = False
                     self.load__faculty_encodings()
                     return
                 else:
@@ -367,9 +376,9 @@ class Attendance:
             self.root.after(1000, self.update_timer, remaining_time - 1)
         else:
             messagebox.showinfo("Attendance Completed", "Attendance session has ended.")
-            self.end_attendance()
+            # self.end_attendance()
             self.reset()
-            self.face_recogition()
+            # self.face_recogition()
 
             
         
@@ -409,10 +418,13 @@ class Attendance:
         self.var_timer.set("")
         self.restart_timer = 60
 
+        self.current_frame_face_cnt = 0
+
         # Reset flags
-        self.faculty_face_recog_start = False
-        self.faculty_face_recog_over = False
-        self.student_attendance_started = False
+        self.recog_faculty_mode = False
+        self.recog_student_mode = False
+
+        
         self.student_attendance_over = False
         self.var_faculty_name_verify=False
 
@@ -530,155 +542,60 @@ class Attendance:
         dist = np.sqrt(np.sum(np.square(feature_1 - feature_2)))
         return dist
 
-    def centroid_tracker(self):
-        for i in range(len(self.current_frame_face_centroid_list)):
-            e_distance_current_frame_person_x_list = []
-            #  For object 1 in current_frame, compute e-distance with object 1/2/3/4/... in last frame
-            for j in range(len(self.last_frame_face_centroid_list)):
-                self.last_current_frame_centroid_e_distance = self.return_euclidean_distance(
-                    self.current_frame_face_centroid_list[i], self.last_frame_face_centroid_list[j])
-
-                e_distance_current_frame_person_x_list.append(
-                    self.last_current_frame_centroid_e_distance)
-
-            last_frame_num = e_distance_current_frame_person_x_list.index(
-                min(e_distance_current_frame_person_x_list))
-            self.current_frame_face_id_list[i] = self.last_frame_face_id_list[last_frame_num]
-
-    def draw_note(self, img_rd):
-        #  / Add some info on windows
-        cv2.putText(img_rd, str(self.var_timer.get()), (10, 30), self.font, 0.8, (0, 0, 255), 1,cv2.LINE_AA)
-
-        # for i in range(len(self.current_frame_face_id_list)):
-        #     img_rd = cv2.putText(img_rd, "Face_" + str(i + 1), tuple(
-        #         [int(self.current_frame_face_centroid_list[i][0]), int(self.current_frame_face_centroid_list[i][1])]),
-        #                          self.font, 0.8, (255, 190, 0), 1, cv2.LINE_AA)
-
+    
     def face_recog(self,img_rd):   
         
         # 2.  Detect faces for frame X
         faces = detector(img_rd, 1)
-        self.recog_success = False
 
         # 3.  Update cnt for faces in frames
         self.last_frame_face_cnt = self.current_frame_face_cnt
         self.current_frame_face_cnt = len(faces)
 
-        # 4.  Update the face name list in last frame
-        self.last_frame_face_id_list = self.current_frame_face_id_list[:]
+        for face in faces:
+            # Get the coordinates of the bounding box
+            left, top, right, bottom = face.left(), face.top(), face.right(), face.bottom()
 
-        # 5.  update frame centroid list
-        self.last_frame_face_centroid_list = self.current_frame_face_centroid_list
-        self.current_frame_face_centroid_list = []
-
-        # 6.1  if cnt not changes
-        if (self.current_frame_face_cnt == self.last_frame_face_cnt) and (self.reclassify_interval_cnt != self.reclassify_interval):
-            logging.debug("scene 1:   No face cnt changes in this frame!!!")
-
-            self.current_frame_face_position_list = []
-
-            if "unknown" in self.current_frame_face_id_list:
-                self.reclassify_interval_cnt += 1
-                    
-            if self.current_frame_face_cnt != 0:
-                for k, d in enumerate(faces):
-                    self.current_frame_face_position_list.append(tuple(
-                        [faces[k].left(), int(faces[k].bottom() + (faces[k].bottom() - faces[k].top()) / 4)]))
-                    self.current_frame_face_centroid_list.append(
-                        [int(faces[k].left() + faces[k].right()) / 2,
-                         int(faces[k].top() + faces[k].bottom()) / 2])
-
-                    img_rd = cv2.rectangle(img_rd, tuple([d.left(), d.top()]),tuple([d.right(), d.bottom()]), (255, 255, 255), 2)
-                    
-            #  Multi-faces in current frame, use centroid-tracker to track
-            if self.current_frame_face_cnt != 1:
-                self.centroid_tracker()
-                    
-            for i in range(self.current_frame_face_cnt):
-                # if str(self.current_frame_face_id_list[i]) == "unknown":
-                    # 6.2 Write names under ROI
-                img_rd = cv2.putText(img_rd, str(self.current_frame_face_id_list[i]), self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
-            
-            
-
-            # self.draw_note(img_rd)
-                
-        # 6.2  If cnt of faces changes, 0->1 or 1->0 or ...
-        else:
-            logging.debug("scene 2: / Faces cnt changes in this frame")
-            self.current_frame_face_position_list = []
-            self.current_frame_face_X_e_distance_list = []
-            self.current_frame_face_feature_list = []
-            self.reclassify_interval_cnt = 0
-
-            # 6.2.1  Face cnt decreases: 1->0, 2->1, ...
-            if self.current_frame_face_cnt == 0:
-                logging.debug("  / No faces in this frame!!!")
-                # clear list of names and features
-                self.current_frame_face_id_list = []
-
-            # 6.2.2 / Face cnt increase: 0->1, 0->2, ..., 1->2, ...
+            if (self.current_frame_face_cnt == self.last_frame_face_cnt):
+                    logging.debug("No face cnt changes in this frame")
+                    # print("not")
             else:
-                logging.debug("  scene 2.2  Get faces in this frame and do face recognition")
-                self.current_frame_face_id_list = []
-                for i in range(len(faces)):
-                    shape = predictor(img_rd, faces[i])
-                    self.current_frame_face_feature_list.append(
-                        face_reco_model.compute_face_descriptor(img_rd, shape))
-                    self.current_frame_face_id_list.append("unknown")
-
-                # 6.2.2.1 Traversal all the faces in the database
-                for k in range(len(faces)):
-                    logging.debug("  For face %d in current frame:", k + 1)
-                    self.current_frame_face_centroid_list.append(
-                        [int(faces[k].left() + faces[k].right()) / 2,
-                         int(faces[k].top() + faces[k].bottom()) / 2])
-
-                    self.current_frame_face_X_e_distance_list = []
-
-                    # 6.2.2.2  Positions of faces captured
-                    self.current_frame_face_position_list.append(tuple(
-                        [faces[k].left(), int(faces[k].bottom() + (faces[k].bottom() - faces[k].top()) / 4)]))
-
-                    # 6.2.2.3 
-                    # For every faces detected, compare the faces in the database
-                    for i in range(len(self.face_features_known_list)):
-                                 
-                        if str(self.face_features_known_list[i][0]) != '0.0':
-                            e_distance_tmp = self.return_euclidean_distance(
-                                self.current_frame_face_feature_list[k],
-                                self.face_features_known_list[i])
-                            logging.debug("      with person %d, the e-distance: %f", i + 1, e_distance_tmp)
-                            self.current_frame_face_X_e_distance_list.append(e_distance_tmp)
-                        else:
-                            #  person_X
-                            self.current_frame_face_X_e_distance_list.append(999999999)
-
-                    # 6.2.2.4 / Find the one with minimum e distance
-                    similar_person_num = self.current_frame_face_X_e_distance_list.index(
-                        min(self.current_frame_face_X_e_distance_list))
-
-                    if min(self.current_frame_face_X_e_distance_list) < 0.4:
-                        recog_id =self.face_id_known_list[similar_person_num]
-                        self.current_frame_face_id_list[k] = recog_id
+                # Extract face features
+                print("predicting")
+                shape = predictor(img_rd, face)
+                face_encodings = face_reco_model.compute_face_descriptor(img_rd, shape)
                         
-                        logging.debug("  Face recognition result: %s",
-                                      self.face_id_known_list[similar_person_num])
+                predicted_label = self.classifier.predict([face_encodings])[0]
 
-                        # print(type(self.face_id_known_list[similar_person_num]))
-                        self.recog_success = True
+                known_face_encodings = self.encodings[predicted_label]
                         
-                        # print(recog_id)
+                euclidean_distance = self.return_euclidean_distance(face_encodings, known_face_encodings)
                         
-                        # print(name)
-                                
+                min_distance = np.min(euclidean_distance)   
+                print(min_distance)
+
+                # If the minimum distance is below threshold, classify as known, else unknown
+                if min_distance < 0.45:
+
+                    if self.recog_faculty_mode:
+                        self.label_text = self.faculty_operation(predicted_label)
+                        self.current_frame_face_cnt = 0
+                    elif self.recog_student_mode:
+                        self.label_text = self.student_operation(predicted_label)
                     else:
-                        logging.debug("  Face recognition result: Unknown person")
-                        
-                    
+                        print("none")
 
-                # 7.  / Add note on cv2 window
-                # self.draw_note(img_rd)
+                else:
+                    self.label_text = "Unknown"
+
+                print(self.label_text)
+
+            # Draw the face boundary
+            cv2.rectangle(img_rd, (left, top), (right, bottom), (255, 255, 255), 2)
+
+            # Display the predicted label
+            cv2.putText(img_rd, self.label_text, (left, bottom + 20), self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
+      
         return img_rd
 
 
@@ -689,61 +606,11 @@ class Attendance:
         while True:      
             ret,img=video_cap.read()
             if not ret or img is None:
-            # Break out of the loop if the frame is empty
                 break
-
-            # Faculty recognition
-            if (self.faculty_face_recog_start and not self.faculty_face_recog_over and not self.student_attendance_started) or (self.student_attendance_over and self.var_faculty_name_verify):  
-                img=self.face_recog(img)
-
-                if self.recog_success:
-                    
-                    for i in range(self.current_frame_face_cnt): 
-                        id = self.current_frame_face_id_list[i]
-                        if id != "unknown":
-                            self.var_faculty_id.set(id)
-                            self.fetch_faculty_details()
-
-                            self.current_frame_face_id_list[i] = self.var_faculty_name.get()
-
-                            if self.var_faculty_name_verify:
-                                if self.var_faculty_id.get() == str(id):
-                                    self.reset()   
-                                else:
-                                    messagebox.showerror("Verification Failed","Resuming Attendance")
-                                    self.take_attendance()
-                            else:
-                                self.faculty_face_recog_over=True
-                                self.display_faculty_info_label()
-
-                    # self.reclassify_interval_cnt = 0
-                    # self.current_frame_face_cnt = 0
-                    
-                    
-
-
-            # Student recognition
-            if self.faculty_face_recog_over and self.student_attendance_started and not self.student_attendance_over:
-                img=self.face_recog(img)
-
-                if self.recog_success:
-
-                    for i in range(self.current_frame_face_cnt):
-
-                        if id != "unknown":
-                            id = self.current_frame_face_id_list[i]
-                            self.fetch_student_details(id)
-
-                            self.current_frame_face_id_list[i] = self.student_name.get()
-
-                            # cv2.putText(img, f"Name:{self.student_name.get()}", self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
-                            self.update_student_info_label()
-                            self.mark_attendance()
-                    
-                    # self.reclassify_interval_cnt = 0
-                    # self.current_frame_face_cnt = 0
             
-
+            if self.recog_faculty_mode or self.recog_student_mode:
+                img=self.face_recog(img)
+            
             # Convert the frame to PIL Image
             img = cv2.resize(img, (500, 480))
             img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -758,42 +625,63 @@ class Attendance:
             root.update()
 
 
+    def faculty_operation(self,id):
+        self.var_faculty_id.set(id)
+        self.fetch_faculty_details()
+
+
+        if self.var_faculty_name_verify:
+            if self.var_faculty_id.get() == str(id):
+                self.reset()
+                return "" 
+            else:
+                messagebox.showerror("Verification Failed","Resuming Attendance")
+                self.take_attendance()
+        else:
+            self.recog_faculty_mode=False
+            self.display_faculty_info_label()
+
+        return self.var_faculty_name.get()
+    
+    def student_operation(self,id):
+        self.fetch_student_details(id)
+   
+        # cv2.putText(img, f"Name:{self.student_name.get()}", self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
+        self.update_student_info_label()
+        self.mark_attendance()
+
+
+        return self.student_name.get()
+    
+
+
 
     #***********encodings loading functions************************
     def load__student_encodings(self):
-        classifier_directory="student/"+str(self.var_degree.get())+"/"+str(self.var_department.get())+"/"+str(self.var_semester.get())
-        self.face_id_known_list = []
-        self.face_features_known_list = []
+        user_directory="student/"+str(self.var_degree.get())+"/"+str(self.var_department.get())+"/"+str(self.var_semester.get())
+        feature_file = user_directory + "/encodings.pkl"
+        classifier_file = user_directory + "/classifier.pkl"
         
         
-        if os.path.exists(f"{classifier_directory}/encodings.pickle"):
-            with open(f"{classifier_directory}/encodings.pickle", "rb") as f:
-                id_encodings_dict = pickle.load(f)
-            for id in id_encodings_dict.keys():
-                self.face_id_known_list.append(id)
-                self.face_features_known_list.append(id_encodings_dict[id])
-            print("size:")
-            print(len(self.face_features_known_list))
+        if os.path.exists(feature_file) and os.path.exists(classifier_file):
+            with open(feature_file, "rb") as f:
+                self.encodings = pickle.load(f)
+            with open(classifier_file, "rb") as f:
+                self.classifier = pickle.load(f)
             return 1
         else:
             logging.warning("encodings.pickle.csv not found!")
             return 0
 
     def load__faculty_encodings(self):
-        self.face_id_known_list = []
-        self.face_features_known_list = []
-
-        if os.path.exists("faculty/encodings.pickle"):
-            with open("faculty/encodings.pickle", "rb") as f:
-                id_encodings_dict = pickle.load(f)
-            for id in id_encodings_dict.keys():
-                self.face_id_known_list.append(id)
-                self.face_features_known_list.append(id_encodings_dict[id])
-            # print("size faculty:")
-            # print(len(self.face_features_known_list))
+        if os.path.exists("faculty/classifier.pkl") and os.path.exists("faculty/encodings.pkl"):
+            with open("faculty/encodings.pkl", "rb") as f:
+                self.encodings = pickle.load(f)
+            with open("faculty/classifier.pkl", "rb") as f:
+                self.classifier = pickle.load(f)
             return 1
         else:
-            logging.warning("encodings.pickle.csv not found!")
+            logging.warning("encodings.pkl or classifier.pkl not found!")
             return 0
 
 

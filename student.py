@@ -13,6 +13,9 @@ import pandas as pd
 import csv
 import time
 import pickle
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+
 
 # Use frontal face detector of Dlib
 detector = dlib.get_frontal_face_detector()
@@ -337,7 +340,7 @@ class Student:
     #create database connection*********************
     def create_connection(self):
         return mysql.connector.connect(
-            host="192.168.0.100",
+            host="localhost",
             username="root",
             password="Drishey@9845",
             database="face_recognizer"
@@ -712,6 +715,8 @@ class Student:
         if Training>0:
             if self.student_ids:
                 id_encondings_dict = {} 
+                labels=[]
+                features=[]
 
                 for id in self.student_ids:
                     user_folder = f"student/data/user_{id}"
@@ -746,14 +751,25 @@ class Student:
                     e.extend(features_mean_personX)
                     # print(features_mean_personX.shape)
                     id_encondings_dict[id] = e
+                    labels.append(id)
+                    features.append(features_mean_personX)
 
                 user_directory = self.create_user_directory()
                 
-                feature_file = user_directory + "/encodings.pickle"
+                print(labels)
+
+                feature_file = user_directory + "/encodings.pkl"
+                classifier_file = user_directory + "/classifier.pkl"
                              
                 with open(feature_file, "wb") as f:
                     # print(id_encondings_dict)
                     pickle.dump(id_encondings_dict, f) 
+                
+                with open(classifier_file, "wb") as f:
+                    classifier = SVC(kernel='linear', probability=True)  # You can try different kernels and parameters
+                    classifier.fit(features, labels)
+                    pickle.dump(classifier, f) 
+
 
                 cv2.destroyAllWindows()
                 messagebox.showinfo("Result","Training datasets completed!!!",parent=self.root)
