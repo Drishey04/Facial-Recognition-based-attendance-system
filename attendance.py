@@ -539,7 +539,8 @@ class Attendance:
     def return_euclidean_distance(self,feature_1, feature_2):
         feature_1 = np.array(feature_1)
         feature_2 = np.array(feature_2)
-        dist = np.sqrt(np.sum(np.square(feature_1 - feature_2)))
+        # dist = np.sqrt(np.sum(np.square(feature_1 - feature_2)))
+        dist = np.linalg.norm(feature_1 - feature_2)
         return dist
 
     
@@ -610,13 +611,16 @@ class Attendance:
             
             if self.recog_faculty_mode or self.recog_student_mode:
                 img=self.face_recog(img)
-            
-            # Convert the frame to PIL Image
+
             img = cv2.resize(img, (500, 480))
             img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
             # Display the image on the Tkinter canvas
             img_tk = ImageTk.PhotoImage(img)
+
+            # Delete previous image from canvas
+            self.canvas.delete("all")
+
             self.canvas.config(width=img_tk.width(), height=img_tk.height())
             self.canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
 
