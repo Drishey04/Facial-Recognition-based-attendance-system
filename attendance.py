@@ -13,6 +13,8 @@ import threading
 import pickle
 import logging
 import dlib
+import time
+import concurrent.futures
 
 
 # Provide your camera source index if it's not the default (0)
@@ -376,7 +378,7 @@ class Attendance:
             self.root.after(1000, self.update_timer, remaining_time - 1)
         else:
             messagebox.showinfo("Attendance Completed", "Attendance session has ended.")
-            # self.end_attendance()
+            self.end_attendance()
             self.reset()
             # self.face_recogition()
 
@@ -544,10 +546,11 @@ class Attendance:
         return dist
 
     
-    def face_recog(self,img_rd):   
-        
+    def face_recog(self,img_rd): 
+
         # 2.  Detect faces for frame X
-        faces = detector(img_rd, 1)
+        faces = detector(img_rd, 0)
+        time.sleep(0.167)
 
         # 3.  Update cnt for faces in frames
         self.last_frame_face_cnt = self.current_frame_face_cnt
@@ -562,7 +565,7 @@ class Attendance:
                     # print("not")
             else:
                 # Extract face features
-                print("predicting")
+                print("predicting") 
                 shape = predictor(img_rd, face)
                 face_encodings = face_reco_model.compute_face_descriptor(img_rd, shape)
                         
@@ -590,29 +593,40 @@ class Attendance:
                     self.label_text = "Unknown"
 
                 print(self.label_text)
+                time.sleep(0.5)
+            
+            
 
             # Draw the face boundary
             cv2.rectangle(img_rd, (left, top), (right, bottom), (255, 255, 255), 2)
 
             # Display the predicted label
             cv2.putText(img_rd, self.label_text, (left, bottom + 20), self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
-      
+            
+
         return img_rd
 
 
     def face_recogition(self):
          
         video_cap = self.vid
+        executor = concurrent.futures.ThreadPoolExecutor()
+        futures = []
+        self.frame_count = 0
 
         while True:      
             ret,img=video_cap.read()
             if not ret or img is None:
                 break
             
+            img = cv2.resize(img, (300, 280))
+            
             if self.recog_faculty_mode or self.recog_student_mode:
+                self.frame_count+=1
+                # print(self.frame_count)
                 img=self.face_recog(img)
 
-            img = cv2.resize(img, (500, 480))
+            
             img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
             # Display the image on the Tkinter canvas
