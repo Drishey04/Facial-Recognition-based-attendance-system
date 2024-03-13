@@ -32,7 +32,7 @@ face_reco_model = dlib.face_recognition_model_v1("data_dlib/dlib_face_recognitio
 class Attendance:
     def __init__(self,root, video_source=0):
         self.root=root
-        self.root.geometry("880x590")
+        self.root.geometry("710x410")
         self.root.title("Attendance taker")
 
         self.video_source = video_source
@@ -132,11 +132,11 @@ class Attendance:
 
         #landing page image and title
         img=Image.open(r"D:\SVNIT\SEMSTER-8\Project\Project_1\Photos\background_page.jpg")
-        img=img.resize((880,590))
+        img=img.resize((710,410))
         self.landingbgd=ImageTk.PhotoImage(img)
 
         self.bg_img=Label(self.root,image=self.landingbgd)
-        self.bg_img.place(x=0,y=0,width=880,height=590)
+        self.bg_img.place(x=0,y=0,width=710,height=410)
 
         # title_lbL=Label(self.bg_img,text="Attendance Taker",font=("times new roman", 30, "bold"), bg="white",fg="red")
         # title_lbL.place(x=0,y=0,width=880,height=50)
@@ -145,29 +145,29 @@ class Attendance:
 
         # Main frame
         self.main_frame = Frame(self.bg_img, bd=2, relief=SUNKEN)
-        self.main_frame.place(x=17, y=70, width=320, height=480)
+        self.main_frame.place(x=17, y=70, width=320, height=315)
 
 
         # Add a Canvas widget for video display
         
         self.canvas = Canvas(self.bg_img, width=60, height=40)
-        self.canvas.place(x=350,y=70,width=500,height=480)
+        self.canvas.place(x=350,y=70,width=335,height=315)
 
         #top frame
         self.Top_frame=LabelFrame(self.main_frame,bd=2,relief=GROOVE,text="Subject Details",font=("times new roman", 12, "bold"))
-        self.Top_frame.place(x=10,y=40,width=300,height=130)
+        self.Top_frame.place(x=10,y=40,width=300,height=100)
 
         #middle frame
         self.Middle_frame=LabelFrame(self.bg_img,bd=2,relief=SUNKEN,font=("times new roman", 12, "bold"))
-        self.Middle_frame.place(x=495, y=10,width=215,height=40)
+        self.Middle_frame.place(x=413, y=10,width=215,height=40)
 
         #bottom frame
         self.Bottom_frame=LabelFrame(self.main_frame,bd=2,relief=RIDGE,text="Student Details",font=("times new roman", 12, "bold"))
-        self.Bottom_frame.place(x=10,y=230,width=300,height=170)
+        self.Bottom_frame.place(x=10,y=160,width=300,height=140)
 
         #buttons frame
         self.Button_frame=LabelFrame(self.bg_img,bd=2,relief=RIDGE,font=("times new roman", 12, "bold"))
-        self.Button_frame.place(x=30,y=10,width=254,height=44)
+        self.Button_frame.place(x=47,y=10,width=254,height=44)
 
         
         self.init_attendance_btn=Button(self.Button_frame,text="Turn on Face Recognizer",command=self.intialize_attendance,width=20,cursor="hand2",font=("times new roman", 15, "bold"),bg="orange",fg="white")
@@ -550,7 +550,6 @@ class Attendance:
 
         # 2.  Detect faces for frame X
         faces = detector(img_rd, 0)
-        time.sleep(0.167)
 
         # 3.  Update cnt for faces in frames
         self.last_frame_face_cnt = self.current_frame_face_cnt
@@ -579,7 +578,7 @@ class Attendance:
                 print(min_distance)
 
                 # If the minimum distance is below threshold, classify as known, else unknown
-                if min_distance < 0.45:
+                if min_distance < 0.5:
 
                     if self.recog_faculty_mode:
                         self.label_text = self.faculty_operation(predicted_label)
@@ -619,7 +618,7 @@ class Attendance:
             if not ret or img is None:
                 break
             
-            img = cv2.resize(img, (300, 280))
+            img = cv2.resize(img, (335, 315))
             
             if self.recog_faculty_mode or self.recog_student_mode:
                 self.frame_count+=1
